@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music MV Generator - Hybrid Mode (Full Pipeline)</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px auto; 
+            width: 90%; 
+            max-width: 900px; 
+            line-height: 1.5; 
+        }
+        /* 統一輸入框樣式和大小 */
+        textarea, input[type="text"], input[type="file"] { 
+            box-sizing: border-box; 
+            width: 100%; 
+            padding: 10px; 
+            margin-top: 5px; 
+            font-size: 1rem; 
+        }
+        
+        button { 
+            padding: 12px 20px; 
+            font-size: 1rem; 
+            margin-top: 10px; 
+            cursor: pointer; 
+            background-color: #4CAF50; 
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+             background-color: #45a049;
+        }
+        .section { 
+            padding: 20px; 
+            border: 1px solid #ddd; 
+            margin-top: 20px; 
+            border-radius: 10px; 
+            background-color: #eef9ff; 
+        }
+        
+        /* 針對 Step 3 & 4 的按鈕組進行細部調整，確保按鈕大小一致 */
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .control-group button {
+            margin-top: 0; 
+            flex-grow: 1; 
+            max-width: 50%;
+            box-sizing: border-box;
+        }
+        /* 讓切換按鈕顏色稍暗，以示區別，但仍維持綠色系 */
+        #mode_toggle_btn_batch, #mode_toggle_btn_single {
+             background-color: #2e8b57; 
+        }
+        #mode_toggle_btn_batch:hover, #mode_toggle_btn_single:hover {
+             background-color: #256b43;
+        }
+        
+        .data-info { 
+            font-size: 0.8rem; 
+            color: #555; 
+            display: block; 
+            margin-top: 5px; 
+        }
+        h3 { 
+            margin-top: 0; 
+            font-weight: bold;
+        }
+        #single_image_preview {
+            max-width: 100%; 
+            height: auto; 
+            margin-top: 15px; 
+            border: 1px solid #ccc; 
+            display: none;
+        }
+        /* 影片預覽樣式 */
+        #video_preview, #mv_preview {
+            max-width: 100%;
+            height: auto;
+            margin-top: 15px;
+            border: 1px solid #ccc;
+            display: none; /* 預設隱藏 */
+        }
+        /* Step 5 按鈕顏色 */
+        #step5_section button {
+            background-color: #008CBA; /* 藍色 */
+        }
+        #step5_section button:hover {
+            background-color: #007bb5;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>🎵 Music MV Generator (Hybrid)</h1>
+<p>Step 1: 音訊轉歌詞 | Step 2: 歌詞轉 Prompt | Step 3: 圖像生成 (SDXL) | Step 4: 影片片段生成 (SVD) | 🌟 Step 5: 影片合併 (MoviePy)</p>
+<p id="status_message" style="color: blue; font-weight: bold;">請啟動後端 app.py 和前端 http.server。</p>
+
+<div class="section" id="step1_section">
+    <h2>Step 1 — Audio → Lyrics</h2>
+    
+    <div style="margin-bottom: 10px;">
+        <h3>📁 輸出檔案基礎名稱</h3>
+        <input type="text" id="lyrics_base_name" placeholder="例如：My_Song">
+    </div>
+    
+    <input type="file" id="audio_file" accept=".mp3,.wav,.m4a,.mp4">
+    <button onclick="step1_audio_to_lyrics()">Convert to Lyrics</button>
+
+    <h3>Lyrics Output</h3>
+    <textarea id="lyrics_output" rows="3"></textarea> 
+    <span id="lyrics_info" class="data-info"></span>
+</div>
+
+<div class="section">
+    <h2>Step 2 — Lyrics → Prompt</h2>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>📁 輸出檔案基礎名稱</h3>
+        <input type="text" id="output_base_name" placeholder="例如：My_Song_Prompts (將用於 ZIP 檔名)">
+    </div>
+
+    <div>
+        <h3>上傳 SRT 檔案</h3>
+        <p>系統將根據時間軸生成多個 JSON Prompt 並打包為 ZIP。</p>
+        <input type="file" id="srt_input_file" accept=".srt">
+        <button onclick="step2_srt_to_zip()">Generate Prompts ZIP</button>
+    </div>
+
+    <h3>Prompt Output</h3>
+    <textarea id="prompt_output" rows="3"></textarea>
+    <span id="prompt_info" class="data-info"></span>
+</div>
+
+
+<div class="section">
+    <h2>Step 3 — Prompt → Images (SDXL)</h2>
+
+    <div id="batch_input" class="input-mode">
+        <h3>📁 批次輸入: Prompt ZIP 檔案</h3>
+        <input type="file" id="prompt_zip_input_file" accept=".zip">
+        <div style="margin-top: 10px;">
+            <input type="text" id="batch_image_base_name" placeholder="ZIP 輸出檔案基礎名稱 (例如：My_Song_Images)">
+        </div>
+        <div class="control-group">
+            <button id="mode_toggle_btn_batch" onclick="toggleMode()">切換至單圖模式</button>
+            <button onclick="step3_prompt_to_image_batch()">Generate Images ZIP</button>
+        </div>
+        <textarea id="batch_image_output" rows="3" readonly placeholder="生成完成後，這裡會顯示 ZIP 下載連結。"></textarea>
+        <span id="batch_image_info" class="data-info"></span>
+    </div>
+
+    <div id="single_input" class="input-mode" style="display: none;">
+        <h3>📁 單圖輸入: JSON 提示詞檔案</h3>
+        <input type="file" id="single_prompt_input_file" accept=".json">
+        <div style="margin-top: 10px;">
+            <input type="text" id="single_image_base_name" placeholder="PNG 輸出檔案名稱 (例如：Shot_1)">
+        </div>
+        <div class="control-group">
+            <button id="mode_toggle_btn_single" onclick="toggleMode()">切換至批次模式</button>
+            <button onclick="step3_prompt_to_image_single()">Generate Single PNG</button>
+        </div>
+        
+        <img id="single_image_preview" src="" alt="Generated Image Preview">
+        <span id="single_image_info" class="data-info"></span>
+    </div>
+</div>
+
+
+<div class="section" id="step4_section">
+    <h2>Step 4 — Images → Video Clip (SVD)</h2>
+    <p>從圖像生成一段短影片片段。</p>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>📁 圖像 ZIP 檔案</h3>
+        <p style="font-size:0.8em; color:#555;">請上傳 **包含一張 PNG 圖像** 的 ZIP 檔案。</p>
+        <input type="file" id="video_input_zip" accept=".zip"> 
+    </div>
+    
+    <div class="control-group">
+         <button onclick="step4_image_to_video()" style="max-width: none;">Generate Video Clip</button>
+    </div>
+    
+    <h3>Video Output (片段)</h3>
+    <textarea id="video_output" rows="3" readonly placeholder="生成完成後，這裡會顯示影片下載連結 (MP4)。"></textarea>
+    
+    <video id="video_preview" controls autoplay muted loop></video>
+    
+    <span id="video_info" class="data-info"></span>
+</div>
+
+
+<div class="section" id="step5_section">
+    <h2>🌟 Step 5 — 合併最終 MV (MoviePy) 🌟</h2>
+    <p>將所有片段、字幕和音訊合併為一段完整的音樂影片。</p>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>📁 最終 MV 元素 ZIP 檔案 (.zip)</h3>
+        <p style="font-size:0.8em; color:#555; font-weight: bold;">
+            **ZIP 內容要求：**<br>
+            - 所有 **MP4 影片片段** (來自 Step 4 或批次執行)<br>
+            - 一個 **SRT 字幕檔案** (來自 Step 1/2)<br>
+            - 一個 **MP3 音訊檔案** (原始音樂)<br>
+            請確保 MP4 片段檔名格式正確，包含時間戳。
+        </p>
+        <input type="file" id="mv_input_zip" accept=".zip"> 
+    </div>
+    
+    <div class="control-group">
+         <button onclick="step5_merge_video()" style="max-width: none;">Merge Full MV</button>
+    </div>
+    
+    <h3>Full MV Output</h3>
+    <textarea id="mv_output" rows="3" readonly placeholder="生成完成後，這裡會顯示完整 MV 的資訊。"></textarea>
+    
+    <video id="mv_preview" controls autoplay muted loop></video>
+
+    <span id="mv_info" class="data-info"></span>
+</div>
+
+
+<script>
+// 變數宣告區塊
+const BASE_API_URL = "http://localhost:5000";
+let currentFileId = "";
+
+// Helper: File -> Base64
+function fileToBase64(file) {
+    return new Promise((r) => {
+        const reader = new FileReader();
+        reader.onload = () => r(reader.result);
+        reader.readAsDataURL(file);
+    });
+}
+
+// 通用 Fetch
+async function apiFetch(endpoint, options) {
+    const statusDiv = document.getElementById('status_message');
+    statusDiv.textContent = `Processing ${endpoint}...`;
+    statusDiv.style.color = 'blue';
+
+    try {
+        const res = await fetch(`${BASE_API_URL}${endpoint}`, options);
+        
+        if (!res.ok) {
+            let errorText = `HTTP Error ${res.status}: ${res.statusText}`;
+            try {
+                const errorData = await res.json();
+                errorText = errorData.error || errorText;
+            } catch {
+                errorText += `. Raw status code: ${res.status}`;
+            }
+            statusDiv.textContent = `❌ API Error (${endpoint}): ${errorText}`;
+            statusDiv.style.color = 'red';
+            return null;
+        }
+
+        const data = await res.json();
+        
+        if (data.success === false) {
+             statusDiv.textContent = `❌ API Error (${endpoint}): ${data.error || 'Unknown server error'}`;
+            statusDiv.style.color = 'red';
+            return null;
+        }
+        
+        statusDiv.textContent = `✅ Success: ${endpoint}`;
+        statusDiv.style.color = 'green';
+        return data;
+    } catch (e) {
+        statusDiv.textContent = `❌ Network Error: Cannot connect to local backend at ${BASE_API_URL}. Please ensure app.py is running.`;
+        statusDiv.style.color = 'red';
+        return null;
+    }
+}
+
+
+// --- Step 1: Audio -> Lyrics ---
+async function step1_audio_to_lyrics() {
+    const file = document.getElementById('audio_file').files[0];
+    const baseName = document.getElementById('lyrics_base_name').value.trim() || "Lyrics";
+    
+    if(!file) return alert("請選擇音訊檔案");
+    
+    const b64 = await fileToBase64(file);
+    const payload = { 
+        filename: file.name, 
+        audio_data_url: b64, 
+        base_name: baseName 
+    };
+    
+    const data = await apiFetch("/audio_to_lyrics", {
+        method: "POST", headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+    });
+    
+    if(data && data.success) {
+        currentFileId = data.file_id;
+        document.getElementById('lyrics_output').value = atob(data.base64);
+        
+        const downloadTxtUrl = `${BASE_API_URL}/download/${currentFileId}/txt?name=${encodeURIComponent(data.base_name)}`;
+        const downloadSrtUrl = `${BASE_API_URL}/download/${currentFileId}/srt?name=${encodeURIComponent(data.base_name)}`;
+        
+        document.getElementById('lyrics_info').innerHTML = 
+            `File ID: ${currentFileId} <br> 
+             <a href="${downloadTxtUrl}" target="_blank">Download TXT (${data.base_name}.txt)</a> |
+             <a href="${downloadSrtUrl}" target="_blank">Download SRT (${data.base_name}.srt)</a>`;
+    }
+}
+
+// --- Step 2: SRT Upload -> Prompts ZIP (只保留此功能) ---
+async function step2_srt_to_zip() {
+    const file = document.getElementById('srt_input_file').files[0];
+    let baseName = document.getElementById('output_base_name').value.trim();
+
+    if(!file) return alert("請選擇 SRT 檔案");
+    if (!baseName) {
+        baseName = "MV_Prompts";
+    }
+    
+    const fd = new FormData();
+    fd.append("srt_file", file);
+    fd.append("base_name", baseName);
+
+    document.getElementById('prompt_output').value = "正在上傳並生成 Prompt ZIP...";
+    document.getElementById('prompt_info').innerHTML = "";
+
+
+    const data = await apiFetch("/lyrics_to_prompts", { method: "POST", body: fd });
+    
+    if(data && data.success && data.mode === 'srt_zip') {
+        currentFileId = data.file_id; 
+        const downloadUrl = `${BASE_API_URL}/download/${currentFileId}/zip?name=${encodeURIComponent(baseName)}`;
+
+        document.getElementById('prompt_output').value = "ZIP 生成成功！請點擊下方連結下載。";
+        document.getElementById('prompt_info').innerHTML = 
+            `<a href="${downloadUrl}" target="_blank" style="font-size:1.2rem; font-weight:bold;">👉 Download Generated Prompts ZIP (${baseName}_prompts.zip)</a>`;
+    } else if (data) {
+        document.getElementById('prompt_output').value = "Prompt ZIP 生成失敗。";
+    }
+}
+
+
+// --- Step 3 模式切換邏輯 ---
+let isBatchMode = true; 
+
+function toggleMode() {
+    if (typeof window.event === 'undefined' || window.event.type !== 'load') {
+        isBatchMode = !isBatchMode;
+    }
+    
+    const batchDiv = document.getElementById('batch_input');
+    const singleDiv = document.getElementById('single_input');
+    
+    document.getElementById('single_image_preview').style.display = 'none';
+    document.getElementById('single_image_info').innerHTML = '';
+
+    if (isBatchMode) {
+        batchDiv.style.display = 'block';
+        singleDiv.style.display = 'none';
+    } else {
+        singleDiv.style.display = 'block';
+        batchDiv.style.display = 'none';
+    }
+}
+window.addEventListener('load', function() {
+    toggleMode(); 
+});
+
+
+// --- 🌟 Step 3A: 批次模式 (ZIP -> ZIP) 🌟 ---
+async function step3_prompt_to_image_batch() {
+    const file = document.getElementById('prompt_zip_input_file').files[0];
+    let baseName = document.getElementById('batch_image_base_name').value.trim();
+
+    if(!file) return alert("請選擇 Prompt ZIP 檔案");
+    
+    if (!baseName) {
+        baseName = currentFileId ? `Images_${currentFileId.split('-')[0]}` : "Generated_Images";
+    }
+    
+    const fd = new FormData();
+    fd.append("mode", "batch"); 
+    fd.append("prompt_zip", file);
+    fd.append("base_name", baseName);
+    
+    document.getElementById('batch_image_output').value = "正在啟動 SDXL 圖像生成 (批次)，這可能需要幾分鐘...";
+    document.getElementById('batch_image_info').innerHTML = "";
+
+    const data = await apiFetch("/prompt_to_image", { method: "POST", body: fd });
+    
+    if(data && data.success) {
+        currentFileId = data.file_id; 
+        const downloadUrl = `${BASE_API_URL}/download/${currentFileId}/zip?name=${encodeURIComponent(data.base_name)}`;
+
+        document.getElementById('batch_image_output').value = "圖像 ZIP 包生成成功！請點擊下方連結下載。";
+        document.getElementById('batch_image_info').innerHTML = 
+            `<a href="${downloadUrl}" target="_blank" style="font-size:1.2rem; font-weight:bold;">👉 Download Generated Images ZIP (${data.base_name}_images.zip)</a>`;
+    } else if (data) {
+        document.getElementById('batch_image_output').value = "圖像批次生成失敗。請檢查後端日誌。";
+    }
+}
+
+
+// --- 🌟 Step 3B: 單圖模式 (JSON File -> PNG) 🌟 ---
+async function step3_prompt_to_image_single() {
+    const file = document.getElementById('single_prompt_input_file').files[0];
+    let baseName = document.getElementById('single_image_base_name').value.trim();
+    
+    if(!file) return alert("請選擇單個 JSON 提示詞檔案。");
+    
+    const jsonText = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => resolve(event.target.result);
+        reader.onerror = (error) => reject(error);
+        reader.readAsText(file);
+    });
+
+    try {
+        JSON.parse(jsonText);
+    } catch (e) {
+        return alert("JSON 檔案內容格式錯誤，請檢查。");
+    }
+    
+    if (!baseName) {
+        baseName = file.name.replace('.json', '') || `Single_Shot_${Date.now()}`;
+    }
+    
+    const fd = new FormData();
+    fd.append("mode", "single"); 
+    fd.append("prompt_json_text", jsonText); 
+    fd.append("base_name", baseName); 
+
+    document.getElementById('single_image_preview').style.display = 'none';
+    document.getElementById('single_image_info').textContent = "正在啟動 SDXL 圖像生成 (單圖)，請稍候...";
+    
+    const data = await apiFetch("/prompt_to_image", { method: "POST", body: fd });
+
+    if (data && data.success) {
+        const img = document.getElementById('single_image_preview');
+        
+        img.src = `data:image/png;base64,${data.base64}`;
+        img.style.display = 'block';
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = `data:image/png;base64,${data.base64}`;
+        downloadLink.download = `${data.base_name}.png`;
+        downloadLink.textContent = `👉 Download PNG (${data.base_name}.png)`;
+        downloadLink.style.cssText = 'font-size:1.2rem; font-weight:bold; display:block; margin-top:10px;';
+
+        document.getElementById('single_image_info').innerHTML = '';
+        document.getElementById('single_image_info').appendChild(downloadLink);
+
+    } else if (data) {
+        document.getElementById('single_image_info').textContent = "單圖生成失敗。請檢查後端日誌。";
+    }
+}
+
+// --- 🌟 Step 4: 圖像 -> 影片片段 (SVD) ---
+async function step4_image_to_video() {
+    const file = document.getElementById('video_input_zip').files[0];
+    const videoElement = document.getElementById('video_preview'); 
+    
+    if (!file) {
+        return alert("請選擇包含 PNG 圖像的 ZIP 檔案。");
+    }
+
+    const fd = new FormData();
+    fd.append("image_zip", file); 
+    
+    document.getElementById('video_output').value = "正在啟動 SVD 影片生成，這可能需要一些時間...";
+    document.getElementById('video_info').innerHTML = "";
+    videoElement.style.display = 'none'; 
+    videoElement.src = ""; 
+
+    const data = await apiFetch("/image_to_video", { method: "POST", body: fd });
+
+    if (data && data.success) {
+        const baseName = data.filename.replace('.mp4', '');
+        const videoSrc = `data:video/mp4;base64,${data.base64}`; 
+
+        document.getElementById('video_output').value = `影片片段生成成功！檔名: ${data.filename}`;
+        
+        // 1. 播放影片
+        videoElement.src = videoSrc;
+        videoElement.style.display = 'block'; 
+        videoElement.load(); 
+        videoElement.play().catch(e => console.warn("Video auto-play failed:", e)); 
+
+
+        // 2. 構造下載連結
+        const downloadLink = document.createElement('a');
+        downloadLink.href = videoSrc;
+        downloadLink.download = `${baseName}.mp4`;
+        downloadLink.textContent = `👉 Download Video Clip (${baseName}.mp4)`;
+        downloadLink.style.cssText = 'font-size:1.2rem; font-weight:bold; display:block; margin-top:10px;';
+
+        document.getElementById('video_info').innerHTML = '';
+        document.getElementById('video_info').appendChild(downloadLink);
+
+    } else if (data) {
+        document.getElementById('video_output').value = "影片生成失敗。請檢查後端日誌。";
+    }
+}
+
+// --- 🌟 Step 5: 合併最終 MV (ZIP -> MP4) 🌟 ---
+async function step5_merge_video() {
+    const file = document.getElementById('mv_input_zip').files[0];
+    const videoElement = document.getElementById('mv_preview'); 
+    
+    if (!file) {
+        return alert("請選擇包含所有 MV 元素的 ZIP 檔案。");
+    }
+
+    const fd = new FormData();
+    fd.append("mv_zip", file); 
+    
+    document.getElementById('mv_output').value = "正在啟動 MoviePy 影片合併，這可能需要幾分鐘...";
+    document.getElementById('mv_info').innerHTML = "";
+    videoElement.style.display = 'none'; 
+    videoElement.src = ""; 
+
+    const data = await apiFetch("/merge_video_clip", { method: "POST", body: fd });
+
+    if (data && data.success) {
+        const baseName = data.filename.replace('.mp4', '');
+        const videoSrc = `data:video/mp4;base64,${data.base64}`; 
+
+        document.getElementById('mv_output').value = `完整 MV 合併成功！檔名: ${data.filename}`;
+        
+        // 1. 播放影片
+        videoElement.src = videoSrc;
+        videoElement.style.display = 'block';
+        videoElement.load(); 
+        videoElement.play().catch(e => console.warn("MV auto-play failed:", e)); 
+
+
+        // 2. 構造下載連結
+        const downloadLink = document.createElement('a');
+        downloadLink.href = videoSrc;
+        downloadLink.download = `${baseName}.mp4`;
+        downloadLink.textContent = `👉 Download Full MV (${baseName}.mp4)`;
+        downloadLink.style.cssText = 'font-size:1.2rem; font-weight:bold; display:block; margin-top:10px;';
+
+        document.getElementById('mv_info').innerHTML = '';
+        document.getElementById('mv_info').appendChild(downloadLink);
+
+    } else if (data) {
+        document.getElementById('mv_output').value = "完整 MV 合併失敗。請檢查後端日誌。";
+    }
+}
+</script>
+
+</body>
+</html>

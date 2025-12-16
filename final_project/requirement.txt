@@ -1,0 +1,23 @@
+# 激活環境
+conda activate svd_env
+
+# 1. 安裝系統級工具與 web 框架
+conda install -c conda-forge ffmpeg pillow
+conda install flask flask-cors
+conda install -c conda-forge imagemagick
+conda install -c conda-forge librosa
+conda install -c conda-forge fonts-conda-ecosystem
+
+# 2. 安裝核心 AI 模塊
+# 🚨 警告：Pytorch 請務必單獨確認 CUDA 版本後安裝
+# pip install torch torchvision torchaudio  # 如果不使用 CUDA，則安裝此行
+
+# 3. 安裝其他 Python 依賴
+pip install moviepy==1.0.3 imageio-ffmpeg imageio
+pip install diffusers==0.30.0 transformers accelerate huggingface-hub
+pip install -U openai-whisper demucs groq
+pip install torchcodec
+pip install soundfile
+
+# 4. 模型連結(需下載)
+# https://drive.google.com/drive/folders/1e1eksqjRddjx9GSQ07dudpjKfnmwD532?usp=drive_link
